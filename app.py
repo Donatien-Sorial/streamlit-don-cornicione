@@ -1,13 +1,36 @@
 import streamlit as st
+from supabase import create_client, Client
 
-# --- CONFIGURATION DES INGRÉDIENTS ---
-# Tu peux stocker cette liste dans ta table 'menu_items' plus tard
-AVAILABLE_INGREDIENTS = [
-    "Cheese", "Ham", "Mushrooms", "Olives", "Onions",
-    "Egg", "Chili Oil", "Fresh Basil", "Anchovies", "Pepperoni"
-]
+# Initialisation du client Supabase
+@st.cache_resource # Pour ne pas recréer la connexion à chaque rafraîchissement
+def init_connection():
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
 
-st.title("🍕 Don Cornicione")
+supabase = init_connection()
+
+# Fonction pour récupérer les données
+def get_pizzas():
+    # On récupère les pizzas et leurs ingrédients par défaut via la table de liaison
+    return supabase.table("menu_items").select("*, menu_item_ingredients(ingredients(name))").execute().data
+
+def get_all_ingredients():
+    return supabase.table("ingredients").select("*").execute().data
+
+st.title("Don Cornicione 🍕")
+
+pizzas = get_pizzas()
+all_ing = get_all_ingredients()
+
+if pizzas:
+    for p in pizzas:
+        st.write(f"### {p['name']} - {p['price']}€")
+        # Extraction des noms d'ingrédients depuis la relation
+        ing_list = [item['ingredients']['name'] for item in p['menu_item_ingredients']]
+        st.write(f"Ingredients: {', '.join(ing_list)}")
+else:
+    st.info("La base de données est vide. Ajoute des pizzas dans Supabase !")
 
 # Initialisation du panier
 if 'cart' not in st.session_state:
@@ -64,4 +87,4 @@ if st.session_state.cart:
     if st.button("🔥 FINALIZE ORDER", use_container_width=True):
         # Ici, 'order_remark' sera envoyé à Supabase dans la table 'orders'
         # et ajouté à la description de l'événement Google Calendar
-        st.success("Order submitted with your remarks!")
+        st.success("Order submitted !")
