@@ -8,7 +8,14 @@ def init_connection():
     key = st.secrets["supabase"]["key"]
     return create_client(url, key)
 
-supabase = init_connection()
+try:
+    supabase = init_connection()
+    # Test simple : on essaie juste de lire le nombre de pizzas
+    res = supabase.table("menu_items").select("count", count="exact").limit(1).execute()
+    st.success("Connexion réussie !")
+except Exception as e:
+    st.error("Erreur de connexion détaillée :")
+    st.code(str(e)) # Ceci affichera l'erreur réelle sans tes secrets
 
 # Fonction pour récupérer les données
 def get_pizzas():
