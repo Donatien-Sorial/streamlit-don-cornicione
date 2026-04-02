@@ -3,6 +3,15 @@ from supabase import create_client
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from datetime import time
+
+def generate_time_slots():
+    slots = []
+    for hour in range(20, 23): # De 20h à 22h inclus
+        for minute in [0, 15, 30, 45]:
+            slots.append(f"{hour:02d}:{minute:02d}")
+    slots.append("23:00") # On ajoute la dernière limite
+    return slots
 
 # --- 1. CONFIGURATION & CONNEXION ---
 st.set_page_config(page_title="Don Cornicione", page_icon="🍕", layout="centered")
@@ -134,13 +143,15 @@ if st.session_state.cart:
     cust_name = st.text_input("Nom complet")
     cust_phone = st.text_input("Numéro de téléphone")
 
-    st.info("Confirmation : immédiate si > 3j, sinon sous 48h.")
+    st.info("Votre numéro sera utilisé pour une demande de confirmation : immédiate si > 3j, sinon 48h. avant le retrait")
+
+    time_options = generate_time_slots()
 
     c1, c2 = st.columns(2)
     with c1:
-        p_date = st.date_input("Date", datetime.now())
+        p_date = st.date_input("Date de retrait", datetime.now())
     with c2:
-        p_time = st.time_input("Heure", datetime.now().replace(hour=19, minute=0))
+        p_time_str = st.selectbox("Heure de retrait", time_options, index=0)
 
     remark = st.text_area("Remarques")
     is_rec = st.checkbox("🔄 Commande hebdomadaire")
@@ -157,7 +168,7 @@ if st.session_state.cart:
                     "remark": remark,
                     "is_recurring": is_rec
                 }
-                g_id = send_to_google(payload, st.session_state.cart)
+                # g_id = send_to_google(payload, st.session_state.cart)
                 save_to_supabase(payload, st.session_state.cart, g_id)
                 st.balloons()
                 st.success("Commande enregistrée !")
