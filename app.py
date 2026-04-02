@@ -93,31 +93,41 @@ menu, all_ingredients = get_menu_data()
 with st.container(border=True):
     st.subheader("➕ Ajouter une pizza")
 
-    pizza_names = [p['name'] for p in menu]
-    selected_name = st.selectbox("Sélectionnez votre pizza", pizza_names)
-    current_pizza = next(p for p in menu if p['name'] == selected_name)
+    pizza_options = {f"{p['name']} ({p['price']:.2f}€)": p for p in menu}
+    selected_display = st.selectbox("Sélectionnez votre pizza", list(pizza_options.keys()))
+    current_pizza = pizza_options[selected_display]
 
+    # --- FILTRAGE ET AFFICHAGE DES INGRÉDIENTS ---
     default_ingredients = [item['ingredients']['name'] for item in current_pizza['menu_item_ingredients']]
-    all_ing_names = [i['name'] for i in all_ingredients]
-    extra_options = [n for n in all_ing_names if n not in default_ingredients]
+
+    # On crée une liste de noms avec les prix pour le multiselect "Ajouter"
+    all_ing_with_prices = {f"{i['name']} (+{i['price_extra']:.2f}€)": i for i in all_ingredients}
+
+    # On filtre pour ne proposer que ce qui n'est pas déjà dans la recette
+    extra_options_display = [name for name, obj in all_ing_with_prices.items() if obj['name'] not in default_ingredients]
 
     col1, col2 = st.columns(2)
     with col1:
-        to_remove = st.multiselect("❌ Retirer", default_ingredients)
+        # Pour retirer, pas besoin de prix (c'est inclus)
+        to_remove = st.multiselect("❌ Retirer (de la recette)", default_ingredients)
     with col2:
-        to_add = st.multiselect("➕ Ajouter", extra_options)
+        # Pour ajouter, on affiche les libellés avec prix
+        to_add_display = st.multiselect("➕ Ajouter (Supplément)", extra_options_display)
+
+    # Récupération des vrais noms d'ingrédients pour la base de données
+    to_add_real_names = [all_ing_with_prices[name]['name'] for name in to_add_display]
 
     qty = st.number_input("Quantité", min_value=1, value=1)
 
     if st.button("Ajouter au panier", use_container_width=True):
-        extra_fees = sum([float(i['price_extra']) for i in all_ingredients if i['name'] in to_add])
+        extra_fees = sum([float(i['price_extra']) for i in all_ingredients if i['name'] in to_add_real_names])
         unit_price = float(current_pizza['price']) + extra_fees
         st.session_state.cart.append({
             "menu_item_id": current_pizza['id'],
-            "display_name": selected_name,
+            "display_name": current_pizza['name'],
             "quantity": qty,
             "removed_ingredients": to_remove,
-            "added_ingredients": to_add,
+            "added_ingredients": to_add_real_names,
             "item_total_price": unit_price * qty
         })
         st.rerun()
@@ -132,7 +142,7 @@ if st.session_state.cart:
         with st.expander(f"{item['quantity']}x {item['display_name']} - {item['item_total_price']:.2f}€"):
             if item['removed_ingredients']: st.write(f"❌ Sans : {', '.join(item['removed_ingredients'])}")
             if item['added_ingredients']: st.write(f"➕ Extra : {', '.join(item['added_ingredients'])}")
-            if st.button(f"Supprimer ligne {idx}", key=f"del_{idx}"):
+            if st.button(f"Supprimer", key=f"del_{idx}"):
                 st.session_state.cart.pop(idx)
                 st.rerun()
         total += item['item_total_price']
