@@ -1,97 +1,105 @@
 import streamlit as st
-from supabase import create_client, Client
+from supabase import create_client
+from datetime import datetime, timedelta
 
-# Initialisation du client Supabase
-@st.cache_resource # Pour ne pas recréer la connexion à chaque rafraîchissement
-def init_connection():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+# --- 1. CONFIGURATION & CONNEXION ---
+st.set_page_config(page_title="Don Cornicione", page_icon="🍕", layout="centered")
 
-try:
-    supabase = init_connection()
-    # Test simple : on essaie juste de lire le nombre de pizzas
-    res = supabase.table("menu_items").select("count", count="exact").limit(1).execute()
-    st.success("Connexion réussie !")
-except Exception as e:
-    st.error("Erreur de connexion détaillée :")
-    st.code(str(e)) # Ceci affichera l'erreur réelle sans tes secrets
+@st.cache_resource
+def init_supabase():
+    return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
 
-# Fonction pour récupérer les données
-def get_pizzas():
-    # On récupère les pizzas et leurs ingrédients par défaut via la table de liaison
-    return supabase.table("menu_items").select("*, menu_item_ingredients(ingredients(name))").execute().data
+supabase = init_supabase()
 
-def get_all_ingredients():
-    return supabase.table("ingredients").select("*").execute().data
+# --- 2. FONCTIONS DE DONNÉES ---
+def get_menu_and_ingredients():
+    pizzas = supabase.table("menu_items").select("*, menu_item_ingredients(ingredients(name))").execute().data
+    all_ing = supabase.table("ingredients").select("*").execute().data
+    return pizzas, all_ing
 
-st.title("Don Cornicione 🍕")
-
-pizzas = get_pizzas()
-all_ing = get_all_ingredients()
-
-if pizzas:
-    for p in pizzas:
-        st.write(f"### {p['name']} - {p['price']}€")
-        # Extraction des noms d'ingrédients depuis la relation
-        ing_list = [item['ingredients']['name'] for item in p['menu_item_ingredients']]
-        st.write(f"Ingredients: {', '.join(ing_list)}")
-else:
-    st.info("La base de données est vide. Ajoute des pizzas dans Supabase !")
+# --- 3. LOGIQUE DE L'INTERFACE ---
+st.title("🍕 Don Cornicione")
+st.markdown("*L'excellence à emporter - Franceville*")
 
 # Initialisation du panier
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
-with st.expander("➕ Add a Pizza to Order", expanded=True):
-    pizza_choice = st.selectbox("Select Pizza", ["Margherita", "Regina", "Don Special"])
+menu, all_ingredients = get_menu_and_ingredients()
+
+# --- SECTION : AJOUT D'UNE PIZZA ---
+with st.container(border=True):
+    st.subheader("➕ New Pizza Line")
+
+    pizza_names = [p['name'] for p in menu]
+    selected_name = st.selectbox("Select Pizza", pizza_names)
+    current_pizza = next(p for p in menu if p['name'] == selected_name)
+
+    default_ingredients = [item['ingredients']['name'] for item in current_pizza['menu_item_ingredients']]
+
+    all_ing_names = [i['name'] for i in all_ingredients]
+    add_options = [name for name in all_ing_names if name not in default_ingredients]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        to_remove = st.multiselect("❌ Remove (from recipe)", default_ingredients)
+    with col2:
+        to_add = st.multiselect("➕ Add Extras", add_options)
+
     qty = st.number_input("Quantity", min_value=1, value=1)
 
-    # Utilisation du multiselect pour une sélection multiple propre
-    to_remove = st.multiselect("Remove ingredients", AVAILABLE_INGREDIENTS)
-    to_add = st.multiselect("Add extra ingredients", AVAILABLE_INGREDIENTS)
+    if st.button("Add to Order", use_container_width=True):
+        extra_price = sum([float(i['price_extra']) for i in all_ingredients if i['name'] in to_add])
+        unit_price = float(current_pizza['price']) + extra_price
 
-    if st.button("Add to Cart"):
         st.session_state.cart.append({
-            "pizza": pizza_choice,
+            "pizza_id": current_pizza['id'],
+            "name": selected_name,
             "quantity": qty,
-            "remove": to_remove, # Liste d'ingrédients
-            "add": to_add        # Liste d'ingrédients
+            "remove": to_remove,
+            "add": to_add,
+            "price": unit_price * qty
         })
         st.rerun()
 
-# --- RÉCAPITULATIF ---
+# --- SECTION : RÉCAPITULATIF DU PANIER ---
 if st.session_state.cart:
-    st.subheader("🛒 Current Order")
-    for idx, item in enumerate(st.session_state.cart):
-        col_item, col_btn = st.columns([0.8, 0.2])
-        with col_item:
-            st.write(f"**{item['quantity']}x {item['pizza']}**")
-            # Affichage propre des listes
-            if item['remove']:
-                st.caption(f"❌ NO: {', '.join(item['remove'])}")
-            if item['add']:
-                st.caption(f"➕ EXTRA: {', '.join(item['add'])}")
-
     st.divider()
-    st.subheader("📋 Order Details")
+    st.subheader("🛒 Current Order")
 
-    cust_name = st.text_input("Customer Name", placeholder="e.g. Jean Dupont")
+    total_order = 0
+    for idx, item in enumerate(st.session_state.cart):
+        with st.expander(f"{item['quantity']}x {item['name']} - {item['price']:.2f}€", expanded=True):
+            if item['remove']: st.write(f"❌ No: {', '.join(item['remove'])}")
+            if item['add']: st.write(f"➕ Extra: {', '.join(item['add'])}")
+            if st.button(f"Remove item {idx+1}", key=f"del_{idx}"):
+                st.session_state.cart.pop(idx)
+                st.rerun()
+        total_order += item['price']
 
-    col_d, col_t = st.columns(2)
-    with col_d:
-        pickup_date = st.date_input("Pickup Day")
-    with col_t:
-        pickup_time = st.time_input("Pickup Time")
+    st.write(f"### Total: {total_order:.2f}€")
 
-    # --- AJOUT DU CHAMP REMARQUE ---
-    order_remark = st.text_area("Special Instructions / Remark",
-                                placeholder="e.g. Well done crust, or call when ready...",
-                                height=100)
+    # --- SECTION : VALIDATION FINALE ---
+    st.divider()
+    st.subheader("👤 Customer & Pickup")
 
-    is_weekly = st.checkbox("🔄 Recurring Order (Weekly)")
+    cust_name = st.text_input("Customer Name", placeholder="e.g. Marc")
 
-    if st.button("🔥 FINALIZE ORDER", use_container_width=True):
-        # Ici, 'order_remark' sera envoyé à Supabase dans la table 'orders'
-        # et ajouté à la description de l'événement Google Calendar
-        st.success("Order submitted !")
+    c1, c2 = st.columns(2)
+    with c1:
+        p_date = st.date_input("Day", datetime.now())
+    with c2:
+        p_time = st.time_input("Time", datetime.now().replace(hour=19, minute=0))
+
+    remark = st.text_area("Remark (Instructions)", placeholder="Well cooked, door code 1234...")
+    is_weekly = st.checkbox("🔄 Recurring weekly order")
+
+    if st.button("🔥 SEND ORDER TO CALENDAR", use_container_width=True):
+        if not cust_name:
+            st.error("Please enter a name!")
+        else:
+            # ICI : Appel de tes fonctions Google & Supabase
+            # (Je les garde en commentaire pour que tu puisses tester l'UI d'abord)
+            st.balloons()
+            st.success("Order sent! (Check your database and calendar)")
+            # st.session_state.cart = [] # Optionnel : vider le panier
