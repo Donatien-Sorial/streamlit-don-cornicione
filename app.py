@@ -171,6 +171,7 @@ if st.session_state.cart:
                     "is_recurring": is_rec
                 }
                 # g_id = send_to_google(payload, st.session_state.cart)
+                g_id = 'test'
                 save_to_supabase(payload, st.session_state.cart, g_id)
                 st.balloons()
                 st.success("Commande enregistrée !")
