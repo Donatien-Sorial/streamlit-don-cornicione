@@ -151,7 +151,7 @@ if st.session_state.cart:
     with c1:
         p_date = st.date_input("Date de retrait", datetime.now())
     with c2:
-        p_time = st.selectbox("Heure de retrait", time_options, index=0)
+        p_time_str = st.selectbox("Heure de retrait", time_options)
 
     remark = st.text_area("Remarques")
     is_rec = st.checkbox("🔄 Commande hebdomadaire")
@@ -161,10 +161,12 @@ if st.session_state.cart:
             st.error("Nom et téléphone requis.")
         else:
             with st.spinner("Envoi en cours..."):
+                h, m = map(int, p_time_str.split(':'))
+                p_time_object = time(h, m)
                 payload = {
                     "customer_name": cust_name,
                     "customer_phone": cust_phone,
-                    "pickup_datetime": datetime.combine(p_date, p_time).isoformat(),
+                    "pickup_datetime": datetime.combine(p_date, p_time_object).isoformat(),
                     "remark": remark,
                     "is_recurring": is_rec
                 }
