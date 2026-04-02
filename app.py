@@ -151,7 +151,7 @@ if st.session_state.cart:
     with c1:
         p_date = st.date_input("Date de retrait", datetime.now())
     with c2:
-        p_time_str = st.selectbox("Heure de retrait", time_options, index=0)
+        p_time = st.selectbox("Heure de retrait", time_options, index=0)
 
     remark = st.text_area("Remarques")
     is_rec = st.checkbox("🔄 Commande hebdomadaire")
